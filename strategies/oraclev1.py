@@ -93,30 +93,25 @@ class Bot:
     def _bid_impl(self, obs, offered):
         if not offered or obs.te_mine <= 0:
             return {}
+        name = offered[0]
         r = obs.round
+        v_ticks = self._get_transform_value(obs) if name == "TRANSFORM" else POWER_FAIR_VALUES.get(name, {}).get(r, 0.0)
+        if v_ticks <= 0.0:
+            return {}
+        fair_te = v_ticks / self.config.TE_SALVAGE
+        opp_te = obs.te_theirs
         rounds_remaining = 6 - r
         reserve = (rounds_remaining - 1) * 3
         max_spendable = max(1, obs.te_mine - reserve)
-        remaining_budget = min(max_spendable, obs.te_mine)
-        out = {}
-        for name in offered:
-            v_ticks = self._get_transform_value(obs) if name == "TRANSFORM" else POWER_FAIR_VALUES.get(name, {}).get(r, 0.0)
-            if v_ticks <= 0.0:
-                continue
-            fair_te = v_ticks / self.config.TE_SALVAGE
-            opp_te = obs.te_theirs
-            if opp_te == 0:
-                bid_te = 1
-            elif opp_te < fair_te * 0.65:
-                bid_te = min(int(opp_te) + 1, int(fair_te * 0.70))
-            else:
-                shade = 0.55 if r <= 2 else (0.65 if r <= 4 else 0.75)
-                bid_te = int(fair_te * shade)
-            bid_te = max(0, min(bid_te, remaining_budget))
-            if bid_te > 0:
-                out[name] = bid_te
-                remaining_budget -= bid_te
-        return out
+        if opp_te == 0:
+            bid_te = 1
+        elif opp_te < fair_te * 0.65:
+            bid_te = min(int(opp_te) + 1, int(fair_te * 0.70))
+        else:
+            shade = 0.55 if r <= 2 else (0.65 if r <= 4 else 0.75)
+            bid_te = int(fair_te * shade)
+        bid_te = max(0, min(bid_te, max_spendable, obs.te_mine))
+        return {name: bid_te} if bid_te > 0 else {}
 
     def quote(self, obs):
         try:
